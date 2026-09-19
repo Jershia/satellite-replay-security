@@ -5,6 +5,8 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 
+from .security import generate_nonce, create_mac
+
 
 class GroundStation(Node):
     def __init__(self):
@@ -14,18 +16,23 @@ class GroundStation(Node):
         self.timer = self.create_timer(5.0, self.publish_command)
 
     def publish_command(self):
+        command = 'STATUS_CHECK'
+        timestamp = int(time.time())
+        nonce = generate_nonce()
+        mac = create_mac(command, timestamp, nonce)
+
         message = {
-            'command': 'STATUS_CHECK',
-            'timestamp': int(time.time()),
-            'nonce': str(int(time.time() * 1000)),
-            'mac': 'DAY1_PLACEHOLDER'
+            'command': command,
+            'timestamp': timestamp,
+            'nonce': nonce,
+            'mac': mac
         }
 
         msg = String()
         msg.data = json.dumps(message)
 
         self.publisher.publish(msg)
-        self.get_logger().info(f'Published: {msg.data}')
+        self.get_logger().info(f'Published secure command: {msg.data}')
 
 
 def main(args=None):

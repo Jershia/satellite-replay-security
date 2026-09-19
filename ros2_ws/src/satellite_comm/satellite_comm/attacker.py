@@ -29,6 +29,7 @@ class Attacker(Node):
         self.delay_s = self.get_parameter('delay_s').value
 
         self.timer = None
+        self.replay_count = 0
 
         self.get_logger().info(
             f'Attacker started: mode={self.mode}, delay={self.delay_s}s'
@@ -55,22 +56,37 @@ class Attacker(Node):
 
         if self.mode == 'replay':
             msg.data = self.first_message
-            self.get_logger().info('Replaying captured message')
+
+            self.replay_count += 1
+
+            self.get_logger().info(
+                f'Replaying captured message #{self.replay_count}'
+            )
+
+            self.publisher.publish(msg)
+
+            if self.replay_count >= 4:
+                self.timer.cancel()
 
         elif self.mode == 'tamper':
             msg.data = self.first_message.replace(
                 'STATUS_CHECK',
                 'UNAUTHORIZED_COMMAND'
             )
-            self.get_logger().info('Tampering with captured message')
+
+            self.get_logger().info(
+                'Tampering with captured message'
+            )
+
+            self.publisher.publish(msg)
+
+            self.timer.cancel()
 
         else:
-            self.get_logger().error(f'Unknown mode: {self.mode}')
-            return
+            self.get_logger().error(
+                f'Unknown mode: {self.mode}'
+            )
 
-        self.publisher.publish(msg)
-
-        if self.timer is not None:
             self.timer.cancel()
 
 
