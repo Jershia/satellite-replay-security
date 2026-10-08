@@ -3,7 +3,7 @@ import hmac
 import secrets
 
 
-SECRET_KEY = b'idp-demo-secret-key-change-later'
+SECRET_KEY = b'idp-demo-secret-key'
 
 
 def generate_nonce():
