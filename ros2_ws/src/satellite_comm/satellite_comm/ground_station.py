@@ -5,7 +5,6 @@ import urllib.request
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
 
 from .security import generate_nonce, create_mac
 
@@ -21,7 +20,7 @@ def fetch_iss_position():
         },
     )
 
-    with urllib.request.urlopen(request, timeout=5) as response:
+    with urllib.request.urlopen(request, timeout=10) as response:
         data = json.loads(response.read().decode('utf-8'))
 
     if data.get('name') != 'iss' or data.get('id') != 25544:
@@ -61,14 +60,23 @@ class GroundStation(Node):
     def __init__(self):
         super().__init__('ground_station')
 
-        self.publisher = self.create_publisher(
-            String, '/telecommand', 10
-        )
+        # Replace with Laptop 2's actual Windows LAN IP.
+        self.server_ip = self.declare_parameter(
+            'server_ip',
+            '10.88.41.92'
+        ).value
+
         self.timer = self.create_timer(
-            5.0, self.publish_command
+            5.0,
+            self.send_command
         )
 
-    def publish_command(self):
+        self.get_logger().info(
+            f'Ground Station sending ISS data to '
+            f'http://{self.server_ip}:8000/telecommand'
+        )
+
+    def send_command(self):
         try:
             iss = fetch_iss_position()
         except Exception as exc:
@@ -82,7 +90,10 @@ class GroundStation(Node):
         nonce = generate_nonce()
 
         mac = create_mac(
-            command, timestamp, nonce, iss
+            command,
+            timestamp,
+            nonce,
+            iss
         )
 
         message = {
@@ -93,18 +104,35 @@ class GroundStation(Node):
             'mac': mac,
         }
 
-        msg = String()
-        msg.data = json.dumps(
-            message, sort_keys=True, allow_nan=False
+        data = json.dumps(
+            message,
+            sort_keys=True,
+            allow_nan=False
+        ).encode('utf-8')
+
+        url = f'http://{self.server_ip}:8000/telecommand'
+
+        request = urllib.request.Request(
+            url,
+            data=data,
+            headers={'Content-Type': 'application/json'},
+            method='POST'
         )
 
-        self.publisher.publish(msg)
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                result = response.read().decode('utf-8')
 
-        self.get_logger().info(
-            'Published authenticated STATUS_CHECK '
-            f'with ISS position lat={iss["latitude"]:.4f}, '
-            f'lon={iss["longitude"]:.4f}'
-        )
+                self.get_logger().info(
+                    f'ISS lat={iss["latitude"]:.4f}, '
+                    f'lon={iss["longitude"]:.4f}; '
+                    f'FastAPI response: {result}'
+                )
+
+        except Exception as exc:
+            self.get_logger().error(
+                f'Failed to send telecommand to FastAPI: {exc}'
+            )
 
 
 def main(args=None):
